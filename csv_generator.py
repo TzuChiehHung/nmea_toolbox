@@ -7,6 +7,8 @@ import logging
 import pynmea2
 import pandas as pd
 import re
+import datetime
+from decimal import Decimal
 
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
@@ -30,7 +32,7 @@ def raw_to_csv(infile, outfile):
     for line in f.readlines():
         string = re.search('(\$).*', line)
         try:
-            msg = pynmea2.parse(string.group())
+            msg = pynmea2.parse(string.group(), check=True)
         except AttributeError:
             continue
         except pynmea2.ParseError as e:
@@ -41,25 +43,31 @@ def raw_to_csv(infile, outfile):
             if ds is not None:
                 df = df.append(ds, ignore_index=True)
                 ds = None
-            ds = pd.Series(index=['datestamp' ,'timestamp', 'longitude', 'latitude', 'gps_qual', 'num_sats', 'spd_over_grnd', 'true_course', 'heading'], dtype='object')
-            ds.timestamp = msg.timestamp
-            ds.longitude = msg.longitude
-            ds.latitude = msg.latitude
-            ds.gps_qual = msg.gps_qual
-            ds.num_sats = msg.num_sats
+            try:
+                ds = pd.Series(index=['datestamp' ,'timestamp', 'longitude', 'latitude', 'gps_qual', 'num_sats', 'spd_over_grnd', 'true_course', 'heading', 'altitude'], dtype='object')
+                ds.timestamp = msg.timestamp if isinstance(msg.timestamp, datetime.time) else None
+                ds.longitude = msg.longitude if isinstance(msg.longitude, float) else None
+                ds.latitude = msg.latitude if isinstance(msg.latitude, float) else None
+                ds.gps_qual = msg.gps_qual if isinstance(msg.gps_qual, int) else None
+                ds.num_sats = msg.num_sats if isinstance(msg.num_sats, str) else None
+                ds.altitude = msg.altitude if isinstance(msg.altitude, float) else None
+            except:
+                continue
         elif isinstance(msg, pynmea2.types.talker.RMC):
             if ds is not None:
-                ds.datestamp = msg.datestamp
-                ds.spd_over_grnd = msg.spd_over_grnd
-                ds.true_course = msg.true_course
+                ds.datestamp = msg.datestamp if isinstance(msg.datestamp, datetime.date) else None
+                ds.spd_over_grnd = msg.spd_over_grnd if isinstance(msg.spd_over_grnd, float) else None
+                ds.true_course = msg.true_course if isinstance(msg.true_course, float) else None
         elif isinstance(msg, pynmea2.types.talker.HDT):
             if ds is not None:
-                ds.heading = msg.heading
+                ds.heading = msg.heading if isinstance(msg.heading, Decimal) else None
 
     if ds is not None:
         df = df.append(ds, ignore_index=True)
 
-    df = df.loc[:, ['datestamp','timestamp', 'longitude', 'latitude', 'gps_qual', 'num_sats','spd_over_grnd', 'true_course', 'heading']]
+    column_name = ['datestamp','timestamp', 'longitude', 'latitude', 'gps_qual', 'num_sats','spd_over_grnd', 'true_course', 'heading', 'altitude']
+    df = df.loc[:, column_name]
+    # df = df.dropna(subset=column_name[:-1])
     df.to_csv(outfile, index=False)
 
 

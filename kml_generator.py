@@ -28,7 +28,7 @@ def csv_to_kml(infile, outfile):
         logging.info('Skip! Output file {} exists.'.format(outfile))
         return
 
-    logging.info('Generating {}...'.format(outfile))
+    logging.info('Generating {} ...'.format(outfile))
 
     f = open(infile, encoding='utf-8')
     df = pd.read_csv(f)
@@ -38,8 +38,34 @@ def csv_to_kml(infile, outfile):
     pnts = kml.newdocument(name='Points')
     lines = kml.newdocument(name='Lines')
 
+    playlist = kml.newgxtour(name="Tour").newgxplaylist()
+    # tracker = kml.newdocument(name='Tracker')
+    for _, row in df.iterrows():
+        if row.gps_qual > 0:
+            break
+
+    tracker = kml.newpoint(name='', coords = [(row.longitude, row.latitude)])
+    tracker.style.iconstyle.icon.href = icon_url['arrow']
+    tracker.style.iconstyle.scale = 0.7
+    tracker.style.iconstyle.heading = 0
+    tracker.style.iconstyle.hotspot = simplekml.HotSpot(x=0.5,y=0.5, xunits='fraction', yunits='fraction')
+
+    # full view
+    flyto = playlist.newgxflyto(gxduration=1.0,gxflytomode='smooth')
+    flyto.camera.longitude = row.longitude
+    flyto.camera.latitude = row.latitude
+    flyto.camera.altitude = 5000
+    wait = playlist.newgxwait(gxduration=3.0)
+
+    flyto = playlist.newgxflyto(gxduration=5.0,gxflytomode='smooth')
+    flyto.camera.longitude = row.longitude
+    flyto.camera.latitude = row.latitude
+    flyto.camera.altitude = 250
+
     prev = None
     for _, row in df.iterrows():
+        if row.gps_qual < 1:
+            continue
         # track
         add_to_track(row, trk)
 
@@ -51,8 +77,12 @@ def csv_to_kml(infile, outfile):
             ls = lines.newlinestring()
         elif prev.gps_qual != row.gps_qual:
             ls = lines.newlinestring()
+        ls.altitudemode = simplekml.AltitudeMode.clamptoground
 
         add_to_linestring(row, ls)
+
+        # tour
+        add_to_playlist(row, playlist, tracker)
 
         prev = row
 
@@ -110,6 +140,25 @@ def add_to_linestring(data, ls):
         ls.name = 'GPS quality indicator = {}'.format(data.gps_qual)
         ls.style.linestyle.color = simplekml.Color.red
         logging.warning('Unprocessed GPS quality indicator: {}'.format(data.gps_qual))
+
+def add_to_playlist(data, playlist, tracker):
+
+    animatedupdate = dict()
+    animatedupdate['position'] = playlist.newgxanimatedupdate(gxduration=0.05)
+    animatedupdate['position'].update.change = '<Point targetId="{}"><coordinates>{},{},0.0</coordinates></Point>'.format(tracker.id, data.longitude, data.latitude)
+
+    if data.true_course:
+        animatedupdate['orientation'] = playlist.newgxanimatedupdate(gxduration=0.05)
+        animatedupdate['orientation'].update.change = '<IconStyle targetId="{}"><heading>{}</heading></IconStyle>'.format(tracker.style.iconstyle.id, data.true_course)
+
+    flyto = playlist.newgxflyto(gxduration=0.05,gxflytomode='smooth')
+    flyto.camera.longitude = data.longitude
+    flyto.camera.latitude = data.latitude
+    flyto.camera.altitude = 250
+    flyto.camera.tilt = 0
+    flyto.camera.heading = 0
+    flyto.camera.roll = 0
+    flyto.camera.altitudemode = simplekml.AltitudeMode.relativetoground
 
 
 def main(args):
